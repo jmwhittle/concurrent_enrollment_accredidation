@@ -1,30 +1,46 @@
 ---
-title: "CE_accredidation"
+title: "CE accredidation study"
 author: "Jason Whittle"
 date: "4/20/2018"
-output: pdf_document
+header-includes:
+    - \usepackage{fancyhdr}
+    - \pagestyle{fancy}
+    - \rhead{\includegraphics[width=2cm,height=2cm]{logo.png}}
+    - \chead{Jason Whittle}
+    - \lhead{Concurrent Ernollment Accredidation Study}
+output:
+  pdf_document:
+    fig_caption: true
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
 ```
 
-## R Markdown
+# Research Questions
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+The requested research questions are as follows:
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+- How do CE student perform academically compared to non-CE students in the same courses? Answerable. Possibly with MLM or just PS/regression techniques.
+- Reporting task: What is the number of unique students who have enrolled at SLCC following CE course enrollment? Answerable. Out souce this to Rochelle's team. 200640-201520
+- How do these numbers compare to non-CE peers? Not answerable. No controll group/no data on non-concurrent high school students.
+- Are CE students more likely to persist at SLCC than non-CE students? Answerable. PS/regression techniques. How should persistance be measured? (number of SLCC credits completed?)
+- Are CE students more likely to complete at SLCC than non-CE students? Answerable. PS/regression techniques.
 
-```{r cars}
-summary(cars)
-```
+It was requested that 201640-201720 be examined and only the top five CE courses. 
 
-## Including Plots
+## Data request/study design for question/request 1
 
-You can also embed plots, for example:
+MLM will be used to seperating out the difference in difficulty between the 5 courses (crn, section number). PS will be based on Ethnicity, Gender, census block income, prior credits (prior to the semester of comparison), prior gpa(prior to the semester of comparison) and term (201640 or 201720). High school GPA (if we have it). Regression will contain age, CE dummy and coure grade (will have to transform it to a difference of the mean).
 
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+## Data request/study design for question/request 4
+Can only meassure CE students who attend SLCC not as a CE student (but as normal college students). Controll group will be students who were not CE students but SLCC students. Date range will be first enrolled in either 201140/201240 this will allow for the 6 year bench mark to have been completed. 
+
+How should persistance be measured? Probably simplest to measure the number of non-CE SLCC credits. Should total SLCC credits be used? PS will be based on eth, gender, age, census block income, first semester gpa (? I think this isn't convoluted), first semseter credits taken (? again, this might be convoluted but I think it is fine) high school gpa (if we have it). Might be some problems with attributing casuality if I need to be able to compare students on first semester gpa and credits.
+
+##  Data request/study design for question/request 5
+
+Same study design as question/request 4 but logit will be used for final evaluation rather than linear regression. 
