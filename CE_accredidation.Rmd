@@ -24,22 +24,22 @@ knitr::opts_chunk$set(message = FALSE)
 The requested research questions are as follows:
 
 - How do CE student perform academically compared to non-CE students in the same courses? Answerable. Possibly with MLM or just PS/regression techniques.
-- Reporting task: What is the number of unique students who have enrolled at SLCC following CE course enrollment? Answerable. Out souce this to Rochelle's team. 200640-201520
-- How do these numbers compare to non-CE peers? Not answerable. No controll group/no data on non-concurrent high school students.
-- Are CE students more likely to persist at SLCC than non-CE students? Answerable. PS/regression techniques. How should persistance be measured? (number of SLCC credits completed?)
+- Reporting task: What is the number of unique students who have enrolled at SLCC following CE course enrollment? Answerable. Out source this to Rochelle's team. 200640-201520
+- How do these numbers compare to non-CE peers? Not answerable. No control group/no data on non-concurrent high school students.
+- Are CE students more likely to persist at SLCC than non-CE students? Answerable. PS/regression techniques. How should persistence be measured? (number of SLCC credits completed?)
 - Are CE students more likely to complete at SLCC than non-CE students? Answerable. PS/regression techniques.
 
 It was requested that 201640-201720 be examined and only the top five CE courses. 
 
 ## Data request/study design for question/request 1
 
-MLM will be used to seperating out the difference in difficulty between the 5 courses (crn, section number). PS will be based on Ethnicity, Gender, census block income, prior credits (prior to the semester of comparison), prior gpa(prior to the semester of comparison) and term (201640 or 201720). High school GPA (if we have it). Regression will contain age, CE dummy and coure grade (will have to transform it to a difference of the mean).
+MLM will be used to separating out the difference in difficulty between the 5 courses (crn, section number). PS will be based on Ethnicity, Gender, census block income, prior credits (prior to the semester of comparison), prior gpa(prior to the semester of comparison) and term (201640 or 201720). High school GPA (if we have it). Regression will contain age, CE dummy and course grade (will have to transform it to a difference of the mean).
 
 
 ## Data request/study design for question/request 4
-Can only meassure CE students who attend SLCC not as a CE student (but as normal college students). Controll group will be students who were not CE students but SLCC students. Date range will be first enrolled in either 201140/201240 this will allow for the 6 year bench mark to have been completed. 
+Can only measure CE students who attend SLCC not as a CE student (but as normal college students). Control group will be students who were not CE students but SLCC students. Date range will be first enrolled in either 201140/201240 this will allow for the 6 year bench mark to have been completed. 
 
-How should persistance be measured? Probably simplest to measure the number of non-CE SLCC credits. Should total SLCC credits be used? PS will be based on eth, gender, age, census block income, first semester gpa (? I think this isn't convoluted), first semseter credits taken (? again, this might be convoluted but I think it is fine) high school gpa (if we have it). Might be some problems with attributing casuality if I need to be able to compare students on first semester gpa and credits.
+How should persistence be measured? Probably simplest to measure the number of non-CE SLCC credits. Should total SLCC credits be used? PS will be based on eth, gender, age, census block income, first semester gpa (? I think this isn't convoluted), first semester credits taken (? again, this might be convoluted but I think it is fine) high school gpa (if we have it). Might be some problems with attributing causality if I need to be able to compare students on first semester gpa and credits.
 
 ##  Data request/study design for question/request 5
 

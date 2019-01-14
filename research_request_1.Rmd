@@ -1,0 +1,746 @@
+---
+title: "Concurrent Enrollment study"
+author: "Jason Whittle"
+date: "4/20/2018"
+header-includes:
+    - \usepackage{fancyhdr}
+    - \pagestyle{fancy}
+    - \rhead{\includegraphics[width=2cm,height=2cm]{logo.png}}
+    - \chead{Jason Whittle}
+    - \lhead{Concurrent Enrollment Accreditation Study}
+output:
+  pdf_document:
+    fig_caption: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(include = FALSE)
+```
+
+# Overview
+
+This research will address three primary research question relating to Salt Lake Community College's (SLCC) concurrent enrollment (CE) program. 
+
+- First, is there a difference in grade distributions for CE student?
+- Second, are CE students more likely to persist at SLCC than non-CE students? 
+- Third, are CE students more likely to complete at SLCC than non-CE students? 
+
+# Results Summary
+
+- Concurrent enrollment students typically perform better than their peers in college level courses.
+- Former concurrent enrollment students have a higher likelihood of persisting Fall semester to Fall semester than other students. 
+- Former concurrent enrollment students have a higher likelihood of receiving an award from SLCC within a 6 year period than non-concurrent enrollment students. 
+
+## Concurrent enrollments at SLCC
+
+Participation in SLCC CE program has seen major fluctuations in the last 15 years but has stabilized around 3000 students per academic year since the economic recovery in 2009-2010.
+
+```{r, include=T}
+library(tidyverse); theme_set(theme_minimal())
+ts_data <- read_csv("ce_ts.csv")
+ts_data[2:18,] %>% ggplot() + 
+  geom_point(aes(y = UNIQUE_NEW_FORMER_CONCURRENT_STUDENTS, x = ACADEMIC_YEAR), stat = "identity") + 
+  labs(title = "Unique CE enrollments by Academic Year", x = "Academic Year", y = "Unique Enrollments") + 
+  theme(axis.text.x = element_text(angle= 45, hjust = 1))
+```
+
+# Concurrent Enrollment students grade comparison.
+
+# Data
+The data used for the grade comparison study initially included all enrollments for Fall 2016 and Spring 2017 in the following courses: ENGL 1010, FHS 2400, MATH 1010, MATH 1050, HUMA 1100.\footnote{ENGL 1010: Intro to Writing, FHS 2400: Marriage and Family Relations, MATH 1010: Integrated Algebra, MATH 1050: College Algebra, HUMA 1100: Intro to Humanities.} These courses were selected since they were the most popular concurrent enrollment courses for the Fall 2016-Spring 2017 academic year. 
+
+
+```{sql, eval = F}
+-- data warehouse pull
+SELECT A.PIDM
+     ,D.COURSE_SUBJECT || D.COURSE_NUMBER AS COURSE
+     ,D.COURSE_SECTION
+     ,D.ONLINE_IND
+     ,A.FINAL_GRADE
+     ,B.GENDER
+     ,B.ETHNICITY
+     ,B.FIRST_GENERATION_IND
+     ,B.EVER_PELL_ELIGIBLE_IND
+     ,B.HIGH_SCHOOL_GPA
+     ,B.FIRST_TERM_EVER
+     ,B.FIRST_TERM_NON_CONCURRENT
+     ,B.EVER_CONCURRENT_IND
+     ,C.AGE_ON_FIRST_DAY
+     ,C.CONTINUING_STUDENT_IND
+     ,C.CONCURRENT_STUDENT_IND
+     ,C.PRIOR_UG_GPA
+     ,C.PRIOR_UG_CREDITS
+     ,C.TERM_UG_CREDITS
+     ,C.FULL_TIME
+     ,F.B19013_001E AS MED_INC_CB
+FROM WSRPMGR.FACT_SLCC_COURSE_HISTORY A
+   LEFT JOIN WSRPMGR.DIM_STUDENT B
+       ON A.DIM_STUDENT_KEY = B.DIM_STUDENT_KEY
+   LEFT JOIN WSRPMGR.DIM_STUDENT_TERM C
+       ON A.DIM_STUDENT_TERM_KEY = C.DIM_STUDENT_TERM_KEY
+   LEFT JOIN WSRPMGR.DIM_SECTION D
+       ON A.DIM_SECTION_KEY = D.DIM_SECTION_KEY
+   LEFT JOIN WSRPMGR.FACT_STUDENT_ADDR_TRM E
+       ON A.DIM_STUDENT_TERM_KEY = E.DIM_STUDENT_TERM_KEY
+   LEFT JOIN WSRPMGR.DIM_CENSUS_BLOCK F
+       ON E.DIM_CENSUS_BLOCK_KEY = F.DIM_CENSUS_BLOCK_KEY
+WHERE A.TERM_CODE IN ('201640','201720')
+AND D.COURSE_SUBJECT || D.COURSE_NUMBER IN ('ENGL1010','FHS2400','MATH1010','MATH1050','HUMA1100')
+AND B.DECEASED_IND = 'N'
+ORDER BY D.COURSE_SUBJECT || D.COURSE_NUMBER
+       ,PIDM;
+```
+
+```{r}
+# data import/basic cleaning
+data <- read.csv("request1.csv") %>% filter(ONLINE_IND == "N") 
+data$FALL <- ifelse(data$TERM_CODE == 201640, 1, 0)
+data <- data %>% filter(FINAL_GRADE != "AU", FINAL_GRADE != "W") # filtering out audits and withdrawls
+data <- data %>% filter(is.na(MED_INC_CB) == F) # Filter out those students without census block information. 
+data$PRIOR_UG_CREDITS[is.na(data$PRIOR_UG_CREDITS) == T] <- 0 #
+data$CE_student <- ifelse(data$CONCURRENT_STUDENT_IND == "Y", 1, 0)
+data$HIGH_SCHOOL_GPA <- ifelse(data$HIGH_SCHOOL_GPA > 4, mean(data$HIGH_SCHOOL_GPA), data$HIGH_SCHOOL_GPA) # fixing incorrect/fat fingered gpa values
+data$white_asian <- ifelse(data$ETHNICITY == "Asian" | data$ETHNICITY == "White", 1, 0)
+# filtered out Online courses 2187 online enrollments only one was also flagged as concurrent enrollment. 
+```
+
+```{r}
+# restating gpa values to numerical values
+# A: 4
+# A-: 3.66
+# B+: 3.33
+# B: 3
+# B-: 2.66
+# C+: 2.33
+# C: 2
+# C-: 1.66
+# D+: 1.33
+# D: 1
+# D-: 0.66
+# E: 0
+
+data$num_grade <- ifelse(data$FINAL_GRADE == "A", 4,
+                   ifelse(data$FINAL_GRADE == "A-", 3.66,
+                    ifelse(data$FINAL_GRADE == "B+", 3.33,
+                     ifelse(data$FINAL_GRADE == "B", 3, 
+                      ifelse(data$FINAL_GRADE == "B-", 2.66, 
+                       ifelse(data$FINAL_GRADE == "C+", 2.33, 
+                        ifelse(data$FINAL_GRADE == "C", 2, 
+                         ifelse(data$FINAL_GRADE == "C-", 1.66, 
+                          ifelse(data$FINAL_GRADE == "D+", 1.33, 
+                           ifelse(data$FINAL_GRADE == "D", 1, 
+                            ifelse(data$FINAL_GRADE == "D-", .66, 0)))))))))))
+
+```
+
+```{r}
+# Creating a facotr variable for prior GPA: 4-3.0, 3.0-2.0, 2.0-1.0, 1.-0. 0, NA
+data$prior_ug_gpa_fac <- ifelse(data$PRIOR_UG_GPA > 3, "AB",
+                                ifelse(data$PRIOR_UG_GPA > 2, "BC", 
+                                       ifelse(data$PRIOR_UG_GPA > 1, "CD", 
+                                              ifelse(data$PRIOR_UG_GPA > 0, "DF", 
+                                                     ifelse(is.na(data$PRIOR_UG_GPA) == T, "NA", "F")))))
+
+data$prior_ug_gpa_fac[is.na(data$prior_ug_gpa_fac) == T] <- "NA"
+data$prior_ug_gpa_fac <- as.factor(data$prior_ug_gpa_fac)
+
+```
+
+
+## Matching
+
+Analyses were performed on both the full data set and a matched data set using propensity scoring based a logit model. Matching is used to simulate more ideal conditions for evaluating a "treatment" effect (or effectiveness of a program). Since we are unable to randomly assign people in high school to either take concurrent enrollment courses or not and then continue onto SLCC those students who willing choose to be concurrent enrollment students are most definitely not a random sample of students.\footnote{Self selecting into a program like concurrent enrollment most definitely means there are systematic and important differences between CE student and non-CE students.} In addition to important differences in academic behavior for CE and non-CE students there is also the fact that it is likely most SLCC students are substantially older and more experienced at college than CE students. Matching will attempt to limit these differences between the CE students and their comparison group. By comparing CE students to students who are similar to a CE student the results can say more about the CE program than when just comparing CE students to all SLCC students. 
+
+The logit model is a model of a CE student. The model attempts to predict the likelihood a student is a CE student from these factors; age, gender, ethnicity, median income of the census block the student's address is associated with and prior undergraduate credits. Once this model is estimated and calculated likelihoods are calculated for all students including those we already know are CE students. A matching algorithm is used to pair CE students with close "control" students based on the propensity score the model calculated. In order to balance the data set on propensity scores estimated for the whole model re-sampling was permitted which will lead to a substantially larger data set in this case. This process allows the regression techniques used later to draw much stronger conclusions since the comparison group will for CE students will be very similar to them along the criteria they were matched on. 
+
+The changes propensity score matching had on the course balance in the study are shown in below in table 1 and table 2. The biggest change is found in FHS 2400 (Marriage and Family relations) where in the the raw data there was an extremely large proportion of CE students to non-CE students, in the matched sample due to re-sampling of non-CE students there is a much better balance in this course. This course balance is achieved as an artifact of the propensity score matching which never explicitly took into account course enrollment. Even though the matching performed for this study was relatively basic and not overly elaborate it still produced a substantially better comparison group for CE students than the raw. 
+
+
+```{r}
+library(arm)
+# library(lme4)
+# Model for ps scores. Had to leave the course information in as a level since the glmer would not converge. will use MLM for the grade analysis
+# ps_model <- glmer(CONCURRENT_STUDENT_IND ~ 
+#                     GENDER + ETHNICITY + 
+#                     FALL + AGE_ON_FIRST_DAY + 
+#                     MED_INC_CB + PRIOR_UG_GPA + 
+#                     PRIOR_UG_CREDITS + 
+#                     (1|COURSE), data = data, family = binomial) # won't converge?
+
+
+ps_model <- glm(CONCURRENT_STUDENT_IND ~ 
+                    GENDER + ETHNICITY + 
+                    FALL + arm::rescale(AGE_ON_FIRST_DAY) + 
+                    arm::rescale(MED_INC_CB) + prior_ug_gpa_fac + 
+                    arm::rescale(PRIOR_UG_CREDITS), data = data, family = binomial)
+summary(ps_model)
+
+```
+
+```{r}
+library(Matching)
+# 
+x_fitted <- ps_model$fitted.values
+Tr <- data$CE_student
+Y_gpa <- data$num_grade
+
+gpa_match <- Match(Y=Y_gpa, Tr = Tr, X = x_fitted, M=1)
+summary(gpa_match)
+```
+
+```{r}
+# recovering the matches for regression analysis.
+
+X_matched <- rbind(data[gpa_match$index.treated,], data[gpa_match$index.control,])
+
+X_matched %>% group_by(PIDM) %>% tally() 
+```
+
+```{r}
+# Checking Match Balance
+mb <- MatchBalance(CE_student~GENDER + ETHNICITY + FIRST_GENERATION_IND + HIGH_SCHOOL_GPA + prior_ug_gpa_fac + MED_INC_CB, 
+             data = X_matched,
+             nboots = 1000)
+
+
+```
+
+```{r, include=T}
+data %>% group_by(COURSE, CONCURRENT_STUDENT_IND) %>% 
+  tally() %>% 
+  spread("CONCURRENT_STUDENT_IND", "n") %>% 
+  knitr::kable(col.names = c("Course", "Not C.E.", "C.E."), 
+               caption = "Break down of student records by course. (raw data)")
+```
+
+```{r, include=T}
+X_matched %>% group_by(COURSE, CONCURRENT_STUDENT_IND) %>% 
+  tally() %>% 
+  spread("CONCURRENT_STUDENT_IND", "n") %>% 
+  knitr::kable(col.names = c("Course", "Not C.E.", "C.E."), 
+               caption = "Break down of student records by course. (matched data)")
+```
+
+
+## Multi-level modeling
+
+Since there are five very different courses in this data set additional controls need to be put in place to account for potentially large differences in course difficulty. For instance; MATH 1010 and 1050 are known to be more likely failed by students than HUMA 1100. If differences in course difficulty are not controlled for it is likely the statistical results would be biased and unreliable measures of program effectiveness. The regression method used for the grade comparison is known as multi-level modeling (MLM). MLM allows the intercept term in a traditional regression to be different based on a group, in this case the groups will be course and section.\footnote{MLM can also be configured to allow the slopes of coefficients to vary by group. For instance, age might have a different impact on grade depending on the course. However for the CE study the varying intercept approach was used.} All MATH 1010 data points will have a different intercept term than all FHS 2400 data points. MLM was also used for course section in addition to course level effects. The control for section helps limit the difference between grading practices of instructors. 
+
+```{r}
+library(lme4)
+# lmer on full data
+gpa_lmer <- lme4::lmer(num_grade~CE_student + 
+                         EVER_PELL_ELIGIBLE_IND + 
+                         FIRST_GENERATION_IND +
+                         arm::rescale(TERM_UG_CREDITS) +
+                         FULL_TIME + 
+                         TERM_UG_CREDITS + 
+                         arm::rescale(AGE_ON_FIRST_DAY) + 
+                         arm::rescale(MED_INC_CB) + 
+                         arm::rescale(PRIOR_UG_CREDITS) + 
+                         prior_ug_gpa_fac + 
+                         FALL + 
+                         white_asian + 
+                         GENDER + 
+                         CONTINUING_STUDENT_IND +
+                         (1|COURSE) + 
+                         (1|COURSE_SECTION), data = data)
+
+summary(gpa_lmer)
+
+tt <-ranef(gpa_lmer)
+```
+
+```{r}
+# lmer on matched data
+gpa_lmer_match <- lme4::lmer(num_grade~CE_student + 
+                   EVER_PELL_ELIGIBLE_IND + 
+                   FIRST_GENERATION_IND + 
+                   TERM_UG_CREDITS + 
+                   FULL_TIME + 
+                   CONTINUING_STUDENT_IND + 
+                   (1|COURSE) + 
+                   (1|COURSE_SECTION) - 1, data = X_matched)
+summary(gpa_lmer_match)
+
+rr <- ranef(gpa_lmer_match)
+```
+
+```{r}
+library(stargazer)
+stargazer(gpa_lmer_match, no.space = TRUE)
+```
+
+\begin{table}[!htbp] \centering 
+  \caption{} 
+  \label{} 
+\begin{tabular}{@{\extracolsep{5pt}}lc} 
+\\[-1.8ex]\hline 
+\hline \\[-1.8ex] 
+ & \multicolumn{1}{c}{\textit{Dependent variable:}} \\ 
+\cline{2-2} 
+\\[-1.8ex] & Course Grade \\ 
+\hline \\[-1.8ex] 
+ CONCURRENT STUDENT & 0.150$^{***}$ \\ 
+  & (0.012) \\ 
+  EVER PELL ELIGIBLE & $-$0.065$^{***}$ \\ 
+  & (0.007) \\  
+  FIRST GENERATION & $-$0.190$^{***}$ \\ 
+  & (0.009) \\ 
+  TERM UG CREDITS & 0.236$^{***}$ \\ 
+  & (0.001) \\ 
+  FULL TIME & 1.182$^{***}$ \\ 
+  & (0.010) \\ 
+  CONTINUING STUDENT & $-$0.008 \\ 
+  & (0.008) \\ 
+  Constant & 0.245 \\ 
+  & (0.192) \\ 
+ \hline \\[-1.8ex] 
+Observations & 90,272 \\ 
+Log Likelihood & $-$115,453.500 \\ 
+Akaike Inf. Crit. & 230,929.000 \\ 
+Bayesian Inf. Crit. & 231,032.500 \\ 
+\hline 
+\hline \\[-1.8ex] 
+\textit{Note:}  & \multicolumn{1}{r}{$^{*}$p$<$0.1; $^{**}$p$<$0.05; $^{***}$p$<$0.01} \\ 
+\end{tabular} 
+\end{table} 
+
+\newpage
+
+## Grade comparison results
+
+When using MLM CE student performed statistically better by a small amount than non-CE students using either matched data and un-matched data (0.15 GPA points better in the matched sample). Matching limited the difference which is what would be expected (0.5 GPA estimated value for the unmatched sample) and the matched result is likely a more accurate estimated effect.\footnote{It seems statistically disingenuous to compare a CE student to a 40 year old working adult trying to complete night classes while raising children.} Table 3 displays the full results for the MLM regression for the matched data. 
+
+CE students appear to be "college ready" and experience similar levels of success in college courses when compared to their (typically) older college going peers. They are most likely more academically motivated and self-select into advanced courses. 
+
+Course level effects were present in this study (justifying the use of MLM). Two of the top five courses CE students take are substantially easier than other classes according to the MLM output for both the matched and un-matched data (FHS 2400:Family and Marriage Relations and HUMA 1100:Intro to Humanities). Table 4 displays the GPA effect of a specific course. A student taking FHS 2400 is likely to receive a grade 0.5 higher than the average for these five course. These estimated random effects for courses hold up really well when comparing the data for the matched and unmatched suggesting a real and persistent effect in this data set. If the values moved around drastically for all courses between the two data sets there would be concern than the MLM was just picking up statistical artifacts rather than the actual trend of difficulty between the courses.
+
+```{r, include = T}
+rand_table <- cbind(rr$COURSE, tt$COURSE)
+knitr::kable(rand_table, col.names = c( "Matched", "non-Matched"), caption = "Estimated GPA effect of courses.")
+```
+
+```{r}
+data %>% group_by(ETHNICITY, CONCURRENT_STUDENT_IND) %>% 
+  tally() %>% 
+  spread("CONCURRENT_STUDENT_IND", "n") %>% 
+  knitr::kable(col.names = c("Ethnicity", "Not Concurrent", "Concurrent"), caption = "Raw data Ethinicity by group.")
+```
+
+```{r}
+X_matched %>% group_by(ETHNICITY, CONCURRENT_STUDENT_IND) %>% 
+  tally() %>% 
+  spread("CONCURRENT_STUDENT_IND", "n") %>% 
+  knitr::kable(col.names = c("Ethnicity", "Not Concurrent", "Concurrent"))
+```
+
+```{r}
+data %>% group_by(GENDER, CONCURRENT_STUDENT_IND) %>% 
+  tally() %>% 
+  spread("CONCURRENT_STUDENT_IND", "n") %>% 
+  knitr::kable(col.names = c("GENDER", "Not Concurrent", "Concurrent"))
+```
+
+```{r}
+X_matched %>% group_by(GENDER, CONCURRENT_STUDENT_IND) %>% 
+  tally() %>% 
+  spread("CONCURRENT_STUDENT_IND", "n") %>% 
+  knitr::kable(col.names = c("GENDER", "Not Concurrent", "Concurrent"))
+```
+
+# Concurrent Enrollment Fall to Fall persistance
+
+## Data 
+
+The data used for this portion of the study examined enrollments for students in Fall 2016 who were not CE students in that term.\footnote{Not currently a concurrent student means that this is not a high school student even though they could have been a concurrent student at SLCC while in high school prior to Fall 2016.} This groups enrollment in Fall 2017 was checked. A propensity score model was used to test if CE students had statistically different persistence patterns than non-CE students in their critical first year of enrollment. Students who completed in Fall 2016 and students who were not 'degree' seeking in Fall 2016 were excluded from this data set.
+
+
+```{sql, eval=F}
+select A.PIDM --makes it one row per student   
+    ,B.age_on_first_day as TERM_AGE
+    ,B.pell_eligible_ind
+    ,C.ethnicity
+    ,C.gender
+    ,C.ever_concurrent_ind
+    ,B.prior_ug_gpa   --GPA at beginning of 201640
+    ,B.prior_ug_credits --credits accumulated by the start of 1640
+    ,B.term_ug_gpa    --GPA in 201640
+    ,B.term_ug_credits --Credits earned in 201640
+    ,SUM(A.credits_attempted) as term_credits_attempted --Number of credits attempted in 201640
+    ,B.hs_one_year_ind
+    ,E.b19013_001e as med_inc_cb --For their address in 201640
+    ,CASE WHEN f.pidm IS NOT NULL then 1 else 0 END AS RETAINED_IND
+from WSRPMGR.FACT_SLCC_COURSE_HISTORY  A
+left join wsrpmgr.dim_student_term     B
+   on A.dim_student_term_key = b.dim_student_term_key
+left join wsrpmgr.dim_student          C
+   on A.dim_student_key = C.dim_student_key
+left join wsrpmgr.fact_student_addr_trm D
+   on A.dim_student_term_key = D.dim_student_term_key
+left join wsrpmgr.dim_census_block     E
+   on D.dim_census_block_key = E.dim_census_block_key
+left join (select PIDM, term_code 
+            FROM wsrpmgr.dim_student_term
+            WHERE enrolled_ind = 'Y') F --this join is for the retention indicator
+   on (A.term_code + 100) = F.term_code    --If there is a match, then they were retained. 
+   and A.pidm = F.pidm
+where A.term_code = '201640'        -- enrollments in this term
+and B.concurrent_student_ind = 'N'  --nonconcurrent in that term
+and B.degree_seeking_code != '0'    --Degree-seeking in some fashion
+and A.PIDM not in (select unique pidm  --Exclude students who got an award in these terms
+                    from wsrpmgr.fact_slcc_grad_outcomes
+                    where term_code in ('201640', '201720', '201730')
+                    and (ug_ap_graduated_ind = 'Y'
+                         or sat_graduated_ind = 'Y')) --got some sort of award
+group by A.PIDM   
+    ,B.age_on_first_day 
+    ,B.pell_eligible_ind
+    ,C.ethnicity
+    ,C.gender
+    ,C.ever_concurrent_ind
+    ,B.prior_ug_gpa   
+    ,B.prior_ug_credits 
+    ,B.term_ug_gpa    
+    ,B.term_ug_credits 
+    ,B.hs_one_year_ind
+    ,E.b19013_001e 
+    ,CASE WHEN f.pidm IS NOT NULL then 1 else 0 END 
+;
+
+--add indicator for whether they were enrolled in 201740
+```
+
+```{r}
+data_persis <- read_csv("data_persis.csv") %>% filter(is.na(MED_INC_CB) == F)
+```
+
+```{r}
+# Creating a facotr variable for prior GPA: 4-3.0, 3.0-2.0, 2.0-1.0, 1.-0. 0, NA
+data_persis$prior_ug_gpa_fac <- ifelse(data_persis$PRIOR_UG_GPA > 3, "AB",
+                                ifelse(data_persis$PRIOR_UG_GPA > 2, "BC", 
+                                       ifelse(data_persis$PRIOR_UG_GPA > 1, "CD", 
+                                              ifelse(data_persis$PRIOR_UG_GPA > 0, "DF", 
+                                                     ifelse(is.na(data_persis$PRIOR_UG_GPA) == T, "NA", "F")))))
+
+data_persis$prior_ug_gpa_fac[is.na(data_persis$prior_ug_gpa_fac) == T] <- "NA"
+data_persis$prior_ug_gpa_fac <- as.factor(data_persis$prior_ug_gpa_fac)
+```
+
+```{r}
+data_persis$PRIOR_UG_CREDITS[is.na(data_persis$PRIOR_UG_CREDITS) == T] <- 0
+data_persis$TERM_UG_CREDITS[is.na(data_persis$TERM_UG_CREDITS) == T] <- 0
+
+# add term credits to prior credits
+data_persis$CREDITS <- data_persis$TERM_UG_CREDITS + data_persis$PRIOR_UG_CREDITS
+
+# ever_concurrent to binary
+
+data_persis$CE_student <- ifelse(data_persis$EVER_CONCURRENT_IND == "Y", 1, 0)
+data_persis$PELL <- ifelse(data_persis$PELL_ELIGIBLE_IND == "Y", 1, 0)
+data_persis$hs_year_one_ind <- ifelse(data_persis$HS_ONE_YEAR_IND == "Y", 1, 0)
+```
+
+
+## Matching
+
+Matching was done in a similar manner to the propensity score matching done for the grade distribution. The variables used for the matching model are: Age, pell eligibility, ethnicity, gender, census block income, prior undergrad gpa, total credits at the end of the semester and an indicator of it a student is within one year of high school. 
+
+```{r}
+# CE_student is former concurrent.
+ps_persis_model <- glm(CE_student ~ TERM_AGE*PELL + ETHNICITY*GENDER + MED_INC_CB + prior_ug_gpa_fac*CREDITS + TERM_CREDITS_ATTEMPTED + hs_year_one_ind, 
+                       data = data_persis, 
+                       family = binomial)
+
+summary(ps_persis_model)
+
+# add to appendix
+```
+
+```{r}
+# matching persistance based on ps scores ps_persis_model
+x_fitted_per <- ps_persis_model$fitted.values
+Tr_per <- data_persis$CE_student
+Y_per <- data_persis$RETAINED_IND
+
+per_match <- Match(Tr = Tr_per, X = x_fitted_per, M=1)
+```
+
+```{r}
+# raw data
+data_persis %>% filter(is.na(MED_INC_CB) == F) %>% group_by(CE_student, RETAINED_IND) %>% tally()
+chisq.test(data_persis$CE_student, data_persis$RETAINED_IND)
+
+persis_logit_unm <- glm(RETAINED_IND~CE_student, family = binomial, data = data_persis)
+summary(persis_logit_unm)
+
+# matched data
+persis_matched <- rbind(data_persis[per_match$index.treated,], data_persis[per_match$index.control,])
+chisq.test(persis_matched$CE_student, persis_matched$RETAINED_IND)
+
+logit_persis <- glm(RETAINED_IND~CE_student, data = persis_matched, family = binomial)
+summary(logit_persis)
+```
+
+
+## Persistance results
+
+A simple logistic regression was used to estimate the difference in persistence rate for former concurrent enrollment students.\footnote{The logistic regression estimated the log odds of a former CE student persisting. Log odds in not immediately interpretable, the results were mathematically reworded into probability of persistence for both the former CE and the non-CE students.} For the matched data set 60\% of the former CE student in Fall 2016 persisted (55\% in the raw data) compared to 47\% of the never CE students (50\% in the raw data). Both the matched and the raw differences were statistically significant. Table 6 displays the logit results for the matched data set. 
+
+```{r}
+stargazer(logit_persis, no.space = T)
+```
+\begin{table}[!htbp] \centering 
+  \caption{} 
+  \label{} 
+\begin{tabular}{@{\extracolsep{5pt}}lc} 
+\\[-1.8ex]\hline 
+\hline \\[-1.8ex] 
+ & \multicolumn{1}{c}{\textit{Dependent variable:}} \\ 
+\cline{2-2} 
+\\[-1.8ex] & Fall to Fall \\ 
+\hline \\[-1.8ex] 
+ CE student & 0.489$^{***}$ \\ 
+  & (0.012) \\ 
+  Constant & $-$0.046$^{***}$ \\ 
+  & (0.006) \\ 
+ \hline \\[-1.8ex] 
+Observations & 141,360 \\ 
+Log Likelihood & $-$97,057.160 \\ 
+Akaike Inf. Crit. & 194,118.300 \\ 
+\hline 
+\hline \\[-1.8ex] 
+\textit{Note:}  & \multicolumn{1}{r}{$^{*}$p$<$0.1; $^{**}$p$<$0.05; $^{***}$p$<$0.01} \\ 
+\end{tabular} 
+\end{table} 
+
+# Concurrent Enrollment Completion
+
+## data
+```{sql, eval = F}
+select dst.AGE_ON_FIRST_DAY as age
+    ,dst.PIDM
+    ,dst.HS_ONE_YEAR_IND as HS_one_year
+    ,dst.TERM_UG_CREDITS as term_credits
+    ,dst.term_ug_gpa as term_gpa
+    ,dst.PELL_RECEIVED_IND as pell
+    ,ds.ever_concurrent_ind as ever_con
+    ,ds.gender 
+    ,ds.ethnicity_code as ETH
+    ,ds.veteran_ind as vet
+    ,ds.marital_status_code as married
+    ,ds.first_generation_ind as first_gen
+    ,ds.refugee_ind
+    ,ds.deceased_ind
+    ,ds.county_of_origin_code as county
+    ,ds.high_school_diploma_type_code as hs_diploma
+    ,ds.high_school_gpa as hs_gpa
+    ,ds.COLLEGE_READY_ENGLISH as engl_ready
+    ,ds.COLLEGE_READY_MATH as math_ready
+    ,case when fsgo.pidm is NULL then 0 else 1 end as grad
+    ,cb.b19013_001e as med_inc_cb
+from wsrpmgr.dim_student_term dst
+join wsrpmgr.dim_student ds
+    on ds.PIDM = dst.PIDM
+left join (select distinct pidm 
+    from wsrpmgr.fact_slcc_grad_outcomes
+        where ug_ap_graduated_ind = 'Y' 
+        and GRADUATION_DATE < '15-MAY-2018'
+        and GRADUATION_DATE > '01-SEP-2012') fsgo
+    on fsgo.pidm = dst.pidm
+JOIN WSRPMGR.FACT_STUDENT_ADDR_TRM fsat
+       ON dst.DIM_STUDENT_TERM_KEY = fsat.DIM_STUDENT_TERM_KEY
+JOIN WSRPMGR.DIM_CENSUS_BLOCK cb
+       ON fsat.DIM_CENSUS_BLOCK_KEY = cb.DIM_CENSUS_BLOCK_KEY 
+where dst.FIRST_TERM_EVER_IND = 'Y'
+and dst.term_code = '201240'
+and dst.CONCURRENT_STUDENT_IND = 'N'
+and ds.FIRST_TERM_SAT is NULL
+and fsat.TERM_CODE = '201240';
+```
+
+
+```{r}
+comp_data <- read_csv("completion.csv")
+```
+
+```{r}
+# Creating a facotr variable for prior GPA: 4-3.0, 3.0-2.0, 2.0-1.0, 1.-0. 0, NA
+comp_data$hs_gpa_fact <- ifelse(comp_data$HS_GPA > 3, "AB",
+                                ifelse(comp_data$HS_GPA > 2, "BC", 
+                                       ifelse(comp_data$HS_GPA > 1, "CD", 
+                                              ifelse(comp_data$HS_GPA > 0, "DF", 
+                                                     ifelse(is.na(comp_data$HS_GPA) == T, "NA", "F")))))
+
+comp_data$hs_gpa_fact[is.na(comp_data$hs_gpa_fact) == T] <- "NA"
+comp_data$hs_gpa_fact <- as.factor(comp_data$hs_gpa_fact)
+comp_data <- comp_data %>% filter(DECEASED_IND == "N")
+
+comp_data$CE_student <- ifelse(comp_data$EVER_CON == "Y", 1, 0)
+comp_data$hs_year_one_ind <- ifelse(comp_data$HS_ONE_YEAR == "Y", 1, 0)
+
+comp_data <- comp_data[, !names(comp_data) %in% c("HS_GPA", "DECEASED_IND", "EVER_CON", "HS_ONE_YEAR")]
+```
+
+```{r}
+comp_data$HS_DIPLOMA[is.na(comp_data$HS_DIPLOMA) == T] <- "NA"
+comp_data$MED_INC_CB[is.na(comp_data$MED_INC_CB) == T] <- median(comp_data$MED_INC_CB, na.rm = T)
+comp_data$TERM_CREDITS[is.na(comp_data$TERM_CREDITS) == T] <- 0
+comp_data$TERM_GPA[is.na(comp_data$TERM_GPA) == T] <- 0
+comp_data <- na.omit(comp_data)
+```
+
+The data used to evaluate completion for CE students simply looked at first time students in Fall 2012 to see if there is a difference for CE student in the 6 year completion rate. A propensity score model was used to test if former CE students had a statistically different 6 year completion rate than student who were never CE students. 
+
+## Matching
+
+The model used for matching was based on: Age, ethnicity, gender, median income of student census block, term credits (for Fall 2012, their first college term), term gpa (for Fall 2012), an indicator for if the student was within one year of high school, veteran indicator, Pell indicator, refugee indicator, married indicator and type of high school diploma. 
+
+```{r}
+# CE_student is former concurrent.
+comp_model <- glm(CE_student ~ arm::rescale(AGE) + ETH*GENDER + arm::rescale(MED_INC_CB)*PELL + 
+                    arm::rescale(TERM_CREDITS)*arm::rescale(TERM_GPA) + hs_year_one_ind + 
+                    VET + MARRIED + REFUGEE_IND + HS_DIPLOMA, 
+                       data = comp_data, 
+                       family = binomial)
+
+
+display(comp_model)
+summary(comp_model)
+```
+
+```{r}
+# matching persistance based on ps scores ps_persis_model
+x_fitted_com <- comp_model$fitted.values
+Tr_com <- comp_data$CE_student
+Y_com <- comp_data$GRAD
+
+com_match <- Match(Y = Y_com,Tr = Tr_com, X = x_fitted_com, M=1)
+summary(com_match)
+
+comp_matched <- rbind(comp_data[com_match$index.treated,], comp_data[com_match$index.control,])
+chi_sq_com <- chisq.test(comp_matched$CE_student, comp_matched$GRAD)
+
+stargazer(chi_sq_com)
+
+logit_com <- glm(GRAD~CE_student,
+                 family = binomial,
+                 data = comp_matched)
+```
+
+## Compeltion results
+
+There is a similar result to the two prior results looking at the performance of CE students in college. For both raw and matched CE students graduate from SLCC at a higher rate than students who had never taken concurrent enrollment courses. Six year graduation rates for this study were 29.4\% CE students compared to 19.1\% for the matched data set (34.7\% for CE and 14.9\% for the raw). These results were statistically significant for both the matched and raw data. Presented below in table 6 is a simple logistic regression which shows the results of completion study, chi-square test also showed statistical significance. 
+
+```{r, eval = F}
+stargazer(logit_com)
+```
+
+\begin{table}[!htbp] \centering 
+  \caption{} 
+  \label{} 
+\begin{tabular}{@{\extracolsep{5pt}}lc} 
+\\[-1.8ex]\hline 
+\hline \\[-1.8ex] 
+ & \multicolumn{1}{c}{\textit{Dependent variable:}} \\ 
+\cline{2-2} 
+\\[-1.8ex] & GRAD \\ 
+\hline \\[-1.8ex] 
+ CE\_student & 0.571$^{***}$ \\ 
+  & (0.034) \\ 
+  & \\ 
+ Constant & $-$1.443$^{***}$ \\ 
+  & (0.026) \\ 
+  & \\ 
+\hline \\[-1.8ex] 
+Observations & 19,628 \\ 
+Log Likelihood & $-$10,738.620 \\ 
+Akaike Inf. Crit. & 21,481.250 \\ 
+\hline 
+\hline \\[-1.8ex] 
+\textit{Note:}  & \multicolumn{1}{r}{$^{*}$p$<$0.1; $^{**}$p$<$0.05; $^{***}$p$<$0.01} \\ 
+\end{tabular} 
+\end{table} 
+<!-- # Appendix -->
+
+
+<!-- ### Propensity score Logit resutls (Grade distribution) -->
+
+<!-- Table 7 below are the results to the grade distribtution logit model which produced the propensity scores for matching. Many continous variables were rescaled which centers and divides the value by two standard deviations. Rescaling leaves the variables similar in scale to other independent variables.  -->
+<!-- ```{r} -->
+<!-- stargazer(ps_model, no.space = TRUE) -->
+<!-- ``` -->
+<!-- \begin{table}[!htbp] \centering  -->
+<!--   \caption{}  -->
+<!--   \label{}  -->
+<!-- \begin{tabular}{@{\extracolsep{5pt}}lc}  -->
+<!-- \\[-1.8ex]\hline  -->
+<!-- \hline \\[-1.8ex]  -->
+<!--  & \multicolumn{1}{c}{\textit{Dependent variable:}} \\  -->
+<!-- \cline{2-2}  -->
+<!-- \\[-1.8ex] & CONCURRENT\_STUDENT\_IND \\  -->
+<!-- \hline \\[-1.8ex]  -->
+<!--  GENDER: Male & 0.056 \\  -->
+<!--   & (0.081) \\  -->
+<!--   GENDER: Unknown & 0.880$^{*}$ \\ -->
+<!--   & (0.492) \\  -->
+<!--   ETHNICITY: Asian & $-$0.464 \\  -->
+<!--   & (0.687) \\  -->
+<!--   ETHNICITY: Black & $-$0.669 \\  -->
+<!--   & (0.743) \\  -->
+<!--   ETHNICITY: Hispanic & $-$0.820 \\  -->
+<!--   & (0.650) \\  -->
+<!--   ETHNICITY: More than One & $-$0.551 \\  -->
+<!--   & (0.679) \\  -->
+<!--   ETHNICITY: Non-Resident Alien & $-$15.708 \\  -->
+<!--   & (182.177) \\  -->
+<!--   ETHNICITY: Pacific Islander or Native Hawaiian & $-$0.514 \\  -->
+<!--   & (0.731) \\  -->
+<!--   ETHNICITY: Unknown & $-$1.547$^{**}$ \\  -->
+<!--   & (0.741) \\  -->
+<!--   ETHNICITY: White & $-$0.005 \\  -->
+<!--   & (0.646) \\  -->
+<!--   FALL & $-$1.581$^{***}$ \\  -->
+<!--   & (0.102) \\  -->
+<!--   arm::rescale(AGE ON FIRST DAY) & $-$36.516$^{***}$ \\  -->
+<!--   & (0.915) \\  -->
+<!--   arm::rescale(MED INC CB) & 0.290$^{***}$ \\  -->
+<!--   & (0.087) \\  -->
+<!--   prior ug gpa facBC & $-$0.315$^{**}$ \\  -->
+<!--   & (0.138) \\  -->
+<!--   prior ug gpa facCD & $-$0.840$^{***}$ \\  -->
+<!--   & (0.206) \\  -->
+<!--   prior ug gpa facDF & $-$2.024$^{***}$ \\  -->
+<!--   & (0.424) \\  -->
+<!--   prior ug gpa facF & $-$2.525$^{***}$ \\  -->
+<!--   & (0.562) \\  -->
+<!--   prior ug gpa facNA & $-$0.964$^{***}$ \\  -->
+<!--   & (0.125) \\  -->
+<!--   arm::rescale(PRIOR UG CREDITS) & $-$6.303$^{***}$ \\  -->
+<!--   & (0.322) \\  -->
+<!--   Constant & $-$8.874$^{***}$ \\  -->
+<!--   & (0.682) \\  -->
+<!--  \hline \\[-1.8ex]  -->
+<!-- Observations & 11,808 \\  -->
+<!-- Log Likelihood & $-$2,011.435 \\  -->
+<!-- Akaike Inf. Crit. & 4,062.871 \\  -->
+<!-- \hline  -->
+<!-- \hline \\[-1.8ex]  -->
+<!-- \textit{Note:}  & \multicolumn{1}{r}{$^{*}$p$<$0.1; $^{**}$p$<$0.05; $^{***}$p$<$0.01} \\  -->
+<!-- \end{tabular}  -->
+<!-- \end{table}  -->
+
+
+<!-- ```{r, eval=F} -->
+<!-- data$gen <- ifelse(data$GENDER == "Male", 1, 0) -->
+<!-- test_lmer <- lme4::lmer(num_grade~ -->
+<!--                    (1 + CE_student|COURSE) -->
+<!--                    , data = data) -->
+<!-- display(test_lmer) -->
+<!-- summary(test_lmer) -->
+<!-- coef(test_lmer) -->
+<!-- ``` -->
+
